@@ -2,11 +2,11 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
 	"aayushsiwa/spendwise-mcp/backend"
+	apperrors "aayushsiwa/spendwise-mcp/errors"
 	"aayushsiwa/spendwise-mcp/models"
 )
 
@@ -37,10 +37,10 @@ func (s *MCPService) SearchRecords(ctx context.Context, params models.SearchReco
 		params.Limit = 25
 	}
 	if params.Limit > 100 {
-		return nil, fmt.Errorf("limit must be 100 or less")
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"limit": map[string]any{"message": "limit must be 100 or less", "value": params.Limit}})
 	}
 	if params.GroupBy != "" && params.GroupBy != "category" && params.GroupBy != "month" {
-		return nil, fmt.Errorf("group_by must be category or month")
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"group_by": map[string]any{"message": "group_by must be category or month", "value": params.GroupBy}})
 	}
 	if err := validateDateRange(params.FromDate, params.ToDate); err != nil {
 		return nil, err
@@ -49,14 +49,14 @@ func (s *MCPService) SearchRecords(ctx context.Context, params models.SearchReco
 		return nil, err
 	}
 	if params.MinAmount > 0 && params.MaxAmount > 0 && params.MinAmount > params.MaxAmount {
-		return nil, fmt.Errorf("min_amount must be less than or equal to max_amount")
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"min_amount": map[string]any{"message": "min_amount must be less than or equal to max_amount", "value": params.MinAmount}, "max_amount": map[string]any{"message": "max_amount must be greater than or equal to min_amount", "value": params.MaxAmount}})
 	}
 	return s.client.SearchRecords(ctx, params)
 }
 
 func (s *MCPService) GetRecord(ctx context.Context, id string) (*models.Record, error) {
 	if strings.TrimSpace(id) == "" {
-		return nil, fmt.Errorf("record_id is required")
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"record_id": map[string]any{"message": "record_id is required", "value": id}})
 	}
 	return s.client.GetRecord(ctx, id)
 }
@@ -95,7 +95,7 @@ func (s *MCPService) ListGoals(ctx context.Context) ([]models.Goal, error) {
 
 func (s *MCPService) GetGoal(ctx context.Context, id string) (*models.Goal, error) {
 	if strings.TrimSpace(id) == "" {
-		return nil, fmt.Errorf("goal_id is required")
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"goal_id": map[string]any{"message": "goal_id is required", "value": id}})
 	}
 	return s.client.GetGoal(ctx, id)
 }
@@ -106,21 +106,21 @@ func validateDateRange(fromDate, toDate string) error {
 	}
 	from, err := time.Parse("2006-01-02", fromDate)
 	if err != nil {
-		return fmt.Errorf("from_date must be in YYYY-MM-DD format")
+		return apperrors.NewValidation("Validation failed", map[string]any{"from_date": map[string]any{"message": "from_date must be in YYYY-MM-DD format", "value": fromDate}})
 	}
 	to, err := time.Parse("2006-01-02", toDate)
 	if err != nil {
-		return fmt.Errorf("to_date must be in YYYY-MM-DD format")
+		return apperrors.NewValidation("Validation failed", map[string]any{"to_date": map[string]any{"message": "to_date must be in YYYY-MM-DD format", "value": toDate}})
 	}
 	if from.After(to) {
-		return fmt.Errorf("from_date must be before or equal to to_date")
+		return apperrors.NewValidation("Validation failed", map[string]any{"from_date": map[string]any{"message": "from_date must be before or equal to to_date", "value": fromDate}, "to_date": map[string]any{"message": "to_date must be after or equal to from_date", "value": toDate}})
 	}
 	return nil
 }
 
 func requireDateRange(fromDate, toDate string) error {
 	if fromDate == "" || toDate == "" {
-		return fmt.Errorf("from_date and to_date are required")
+		return apperrors.NewValidation("Validation failed", map[string]any{"from_date": map[string]any{"message": "from_date is required", "value": fromDate}, "to_date": map[string]any{"message": "to_date is required", "value": toDate}})
 	}
 	return validateDateRange(fromDate, toDate)
 }
@@ -135,19 +135,19 @@ func validateRecordType(recordType string, allowTransfer bool) error {
 	}
 	if !allowed[recordType] {
 		if allowTransfer {
-			return fmt.Errorf("record_type must be income, expense, or transfer")
+			return apperrors.NewValidation("Validation failed", map[string]any{"record_type": map[string]any{"message": "record_type must be income, expense, or transfer", "value": recordType}})
 		}
-		return fmt.Errorf("record_type must be income or expense")
+		return apperrors.NewValidation("Validation failed", map[string]any{"record_type": map[string]any{"message": "record_type must be income or expense", "value": recordType}})
 	}
 	return nil
 }
 
 func validateMonthYear(month, year int) error {
 	if month < 1 || month > 12 {
-		return fmt.Errorf("month must be between 1 and 12")
+		return apperrors.NewValidation("Validation failed", map[string]any{"month": map[string]any{"message": "month must be between 1 and 12", "value": month}})
 	}
 	if year < 1 {
-		return fmt.Errorf("year must be a positive number")
+		return apperrors.NewValidation("Validation failed", map[string]any{"year": map[string]any{"message": "year must be a positive number", "value": year}})
 	}
 	return nil
 }

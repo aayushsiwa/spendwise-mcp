@@ -10,7 +10,9 @@ import (
 	"strings"
 	"time"
 
+	apperrors "aayushsiwa/spendwise-mcp/errors"
 	"aayushsiwa/spendwise-mcp/models"
+	"aayushsiwa/spendwise-mcp/session"
 )
 
 type Client interface {
@@ -26,12 +28,14 @@ type Client interface {
 
 type HTTPClient struct {
 	baseURL string
+	token   string
 	client  *http.Client
 }
 
-func NewHTTPClient(baseURL string) *HTTPClient {
+func NewHTTPClient(baseURL, token string) *HTTPClient {
 	return &HTTPClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
+		token:   token,
 		client: &http.Client{
 			Timeout: 15 * time.Second,
 		},
@@ -148,12 +152,23 @@ func (c *HTTPClient) get(ctx context.Context, path string, query url.Values, out
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
 	if err != nil {
-		return err
+		return apperrors.NewInternal("failed to create backend request", err)
+	}
+
+	if sessionCtx := session.FromContext(ctx); sessionCtx != nil {
+		req.Header.Set("X-Request-ID", sessionCtx.RequestID)
+		req.Header.Set("X-MCP-Client", sessionCtx.ClientName)
+		req.Header.Set("X-MCP-Actor", sessionCtx.ActorID)
+		if sessionCtx.BackendToken != "" {
+			req.Header.Set("Authorization", "Bearer "+sessionCtx.BackendToken)
+		}
+	} else if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return err
+		return apperrors.NewBackend("backend request failed", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -166,16 +181,38 @@ func (c *HTTPClient) get(ctx context.Context, path string, query url.Values, out
 			} `json:"error"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&apiErr); err == nil && apiErr.Error.Message != "" {
-			return fmt.Errorf("backend %s: %s", apiErr.Error.Type, apiErr.Error.Message)
+			return mapStatusError(resp.StatusCode, apiErr.Error.Type, apiErr.Error.Message, apiErr.Error.Details)
 		}
-		return fmt.Errorf("backend request failed with status %d", resp.StatusCode)
+		return mapStatusError(resp.StatusCode, "backend_error", fmt.Sprintf("backend request failed with status %d", resp.StatusCode), nil)
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("decode backend response: %w", err)
+		return apperrors.NewBackend("failed to decode backend response", err)
 	}
 
 	return nil
+}
+
+func mapStatusError(statusCode int, errType, message string, details map[string]any) error {
+	switch statusCode {
+	case http.StatusBadRequest, http.StatusUnprocessableEntity:
+		return apperrors.NewValidation(message, details)
+	case http.StatusUnauthorized:
+		return apperrors.NewUnauthorized(message, nil)
+	case http.StatusForbidden:
+		return apperrors.NewForbidden(message, nil)
+	case http.StatusNotFound:
+		return apperrors.NewNotFound(message, nil)
+	case http.StatusConflict:
+		return apperrors.NewConflict(message, nil)
+	case http.StatusTooManyRequests:
+		return apperrors.NewRateLimited(message, nil)
+	default:
+		return apperrors.NewBackend(message, nil).WithDetails(map[string]any{
+			"backend_type": errType,
+			"status_code":  statusCode,
+		})
+	}
 }
 
 func addString(query url.Values, key, value string) {

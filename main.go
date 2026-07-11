@@ -14,7 +14,7 @@ import (
 
 func main() {
 	cfg := config.Load()
-	apiClient := backend.NewHTTPClient(cfg.BackendBaseURL)
+	apiClient := backend.NewHTTPClient(cfg.BackendBaseURL, cfg.BackendToken)
 	svc := services.NewService(apiClient)
 	handler := handlers.NewHandler(svc)
 
@@ -26,7 +26,11 @@ func main() {
 	)
 
 	apiRoutes := routes.NewRoutes(handler)
-	routes.AttachRoutes(mcpServer, apiRoutes)
+	routes.AttachRoutes(mcpServer, apiRoutes, routes.AttachOptions{
+		ActorID:      cfg.ActorID,
+		ClientName:   cfg.ClientName,
+		BackendToken: cfg.BackendToken,
+	})
 
 	if err := server.ServeStdio(mcpServer); err != nil {
 		log.Fatalf("mcp server error: %v", err)

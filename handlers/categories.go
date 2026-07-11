@@ -9,7 +9,7 @@ import (
 func (h *Handler) ListCategories(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	result, err := h.Service.ListCategories(ctx)
 	if err != nil {
-		return errorResult(err)
+		return errorResult(ctx, err)
 	}
-	return jsonResult(map[string]any{"categories": result})
+	return successResult(ctx, map[string]any{"categories": result})
 }

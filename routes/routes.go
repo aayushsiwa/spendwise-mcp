@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"aayushsiwa/spendwise-mcp/handlers"
+	"aayushsiwa/spendwise-mcp/session"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -16,6 +17,12 @@ type Route struct {
 }
 
 type Routes []Route
+
+type AttachOptions struct {
+	ActorID      string
+	ClientName   string
+	BackendToken string
+}
 
 func NewRoutes(h *handlers.Handler) Routes {
 	return Routes{
@@ -98,10 +105,12 @@ func NewRoutes(h *handlers.Handler) Routes {
 	}
 }
 
-func AttachRoutes(mcpServer *server.MCPServer, routes Routes) {
+func AttachRoutes(mcpServer *server.MCPServer, routes Routes, opts AttachOptions) {
 	for _, route := range routes {
+		toolName := route.Tool.Name
 		handlerFunc := route.HandlerFunc
 		mcpServer.AddTool(route.Tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			ctx = session.WithContext(ctx, session.New(opts.ActorID, opts.ClientName, opts.BackendToken, toolName))
 			return handlerFunc(ctx, req)
 		})
 	}
