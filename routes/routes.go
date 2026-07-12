@@ -110,6 +110,35 @@ func NewRoutes(h *handlers.Handler) Routes {
 			),
 			HandlerFunc: h.ListCategories,
 		},
+		{
+			Name: "CreateCategory",
+			Tool: mcp.NewTool("create_category",
+				mcp.WithDescription("Create a new category."),
+				mcp.WithString("name", mcp.Required(), mcp.Description("Category name.")),
+				mcp.WithString("icon", mcp.Description("Icon identifier.")),
+				mcp.WithString("color", mcp.Description("Color hex code.")),
+			),
+			HandlerFunc: h.CreateCategory,
+		},
+		{
+			Name: "UpdateCategory",
+			Tool: mcp.NewTool("update_category",
+				mcp.WithDescription("Update an existing category."),
+				mcp.WithString("category_id", mcp.Required(), mcp.Description("The category ID.")),
+				mcp.WithString("name", mcp.Required(), mcp.Description("Category name.")),
+				mcp.WithString("icon", mcp.Description("Icon identifier.")),
+				mcp.WithString("color", mcp.Description("Color hex code.")),
+			),
+			HandlerFunc: h.UpdateCategory,
+		},
+		{
+			Name: "DeleteCategory",
+			Tool: mcp.NewTool("delete_category",
+				mcp.WithDescription("Delete a category by ID."),
+				mcp.WithString("category_id", mcp.Required(), mcp.Description("The category ID to delete.")),
+			),
+			HandlerFunc: h.DeleteCategory,
+		},
 
 		// ── Budgets ──────────────────────────────────────────────
 		{

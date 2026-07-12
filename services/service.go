@@ -71,6 +71,19 @@ type AddGoalProgressParams struct {
 	Amount float64
 }
 
+type CreateCategoryParams struct {
+	Name  string
+	Icon  string
+	Color string
+}
+
+type UpdateCategoryParams struct {
+	CategoryID string
+	Name       string
+	Icon       string
+	Color      string
+}
+
 type Service interface {
 	SearchRecords(ctx context.Context, params models.SearchRecordsParams) (*models.SearchRecordsResult, error)
 	GetRecord(ctx context.Context, id string) (*models.Record, error)
@@ -90,6 +103,9 @@ type Service interface {
 	UpdateGoal(ctx context.Context, params UpdateGoalParams) error
 	DeleteGoal(ctx context.Context, id string) (*backend.DeleteBudgetOutput, error)
 	AddGoalProgress(ctx context.Context, params AddGoalProgressParams) error
+	CreateCategory(ctx context.Context, params CreateCategoryParams) (*backend.CreateCategoryOutput, error)
+	UpdateCategory(ctx context.Context, params UpdateCategoryParams) error
+	DeleteCategory(ctx context.Context, id string) (*backend.DeleteCategoryOutput, error)
 }
 
 type MCPService struct {
@@ -382,6 +398,38 @@ func (s *MCPService) DeleteGoal(ctx context.Context, id string) (*backend.Delete
 		return nil, apperrors.NewValidation("Validation failed", map[string]any{"goal_id": map[string]any{"message": "goal_id is required", "value": id}})
 	}
 	return s.client.DeleteGoal(ctx, id)
+}
+
+func (s *MCPService) CreateCategory(ctx context.Context, params CreateCategoryParams) (*backend.CreateCategoryOutput, error) {
+	if strings.TrimSpace(params.Name) == "" {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"name": map[string]any{"message": "name is required"}})
+	}
+	return s.client.CreateCategory(ctx, backend.CreateCategoryInput{
+		Name:  params.Name,
+		Icon:  params.Icon,
+		Color: params.Color,
+	})
+}
+
+func (s *MCPService) UpdateCategory(ctx context.Context, params UpdateCategoryParams) error {
+	if strings.TrimSpace(params.CategoryID) == "" {
+		return apperrors.NewValidation("Validation failed", map[string]any{"category_id": map[string]any{"message": "category_id is required"}})
+	}
+	if strings.TrimSpace(params.Name) == "" {
+		return apperrors.NewValidation("Validation failed", map[string]any{"name": map[string]any{"message": "name is required"}})
+	}
+	return s.client.UpdateCategory(ctx, params.CategoryID, backend.UpdateCategoryInput{
+		Name:  params.Name,
+		Icon:  params.Icon,
+		Color: params.Color,
+	})
+}
+
+func (s *MCPService) DeleteCategory(ctx context.Context, id string) (*backend.DeleteCategoryOutput, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"category_id": map[string]any{"message": "category_id is required", "value": id}})
+	}
+	return s.client.DeleteCategory(ctx, id)
 }
 
 func (s *MCPService) AddGoalProgress(ctx context.Context, params AddGoalProgressParams) error {

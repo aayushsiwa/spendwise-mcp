@@ -96,6 +96,29 @@ type AddGoalProgressInput struct {
 	Amount float64 `json:"amount"`
 }
 
+type CreateCategoryInput struct {
+	Name  string `json:"name"`
+	Icon  string `json:"icon"`
+	Color string `json:"color"`
+}
+
+type CreateCategoryOutput struct {
+	ID    string `json:"ID"`
+	Name  string `json:"name"`
+	Icon  string `json:"icon"`
+	Color string `json:"color"`
+}
+
+type UpdateCategoryInput struct {
+	Name  string `json:"name"`
+	Icon  string `json:"icon"`
+	Color string `json:"color"`
+}
+
+type DeleteCategoryOutput struct {
+	Message string `json:"message"`
+}
+
 type Client interface {
 	SearchRecords(ctx context.Context, params models.SearchRecordsParams) (*models.SearchRecordsResult, error)
 	GetRecord(ctx context.Context, id string) (*models.Record, error)
@@ -115,6 +138,9 @@ type Client interface {
 	UpdateGoal(ctx context.Context, id string, input UpdateGoalInput) error
 	DeleteGoal(ctx context.Context, id string) (*DeleteBudgetOutput, error)
 	AddGoalProgress(ctx context.Context, id string, input AddGoalProgressInput) error
+	CreateCategory(ctx context.Context, input CreateCategoryInput) (*CreateCategoryOutput, error)
+	UpdateCategory(ctx context.Context, id string, input UpdateCategoryInput) error
+	DeleteCategory(ctx context.Context, id string) (*DeleteCategoryOutput, error)
 }
 
 type HTTPClient struct {
@@ -297,6 +323,28 @@ func (c *HTTPClient) DeleteGoal(ctx context.Context, id string) (*DeleteBudgetOu
 
 func (c *HTTPClient) AddGoalProgress(ctx context.Context, id string, input AddGoalProgressInput) error {
 	return c.postNoResult(ctx, "/goals/"+url.PathEscape(id)+"/progress", input)
+}
+
+func (c *HTTPClient) CreateCategory(ctx context.Context, input CreateCategoryInput) (*CreateCategoryOutput, error) {
+	var results []CreateCategoryOutput
+	if err := c.post(ctx, "/categories", []CreateCategoryInput{input}, &results); err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, apperrors.NewBackend("category creation returned empty result", nil)
+	}
+	return &results[0], nil
+}
+
+func (c *HTTPClient) UpdateCategory(ctx context.Context, id string, input UpdateCategoryInput) error {
+	return c.patch(ctx, "/categories/"+url.PathEscape(id), input)
+}
+
+func (c *HTTPClient) DeleteCategory(ctx context.Context, id string) (*DeleteCategoryOutput, error) {
+	if err := c.delete(ctx, "/categories/"+url.PathEscape(id), nil); err != nil {
+		return nil, err
+	}
+	return &DeleteCategoryOutput{Message: "category deleted"}, nil
 }
 
 func (c *HTTPClient) postNoResult(ctx context.Context, path string, body any) error {
