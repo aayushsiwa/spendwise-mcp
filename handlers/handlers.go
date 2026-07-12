@@ -115,6 +115,84 @@ func optionalInt(req mcp.CallToolRequest, key string) (int, error) {
 	}
 }
 
+func strPtr(s string) *string {
+	return &s
+}
+
+func fltPtr(f float64) *float64 {
+	return &f
+}
+
+func optionalFloatPtr(req mcp.CallToolRequest, key string) (*float64, error) {
+	value, ok := req.GetArguments()[key]
+	if !ok || value == nil {
+		return nil, nil
+	}
+	switch v := value.(type) {
+	case float64:
+		return fltPtr(v), nil
+	case int:
+		return fltPtr(float64(v)), nil
+	case string:
+		if v == "" {
+			return nil, nil
+		}
+		parsed, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return nil, fmt.Errorf("%s must be a number", key)
+		}
+		return fltPtr(parsed), nil
+	default:
+		return nil, fmt.Errorf("%s must be a number", key)
+	}
+}
+
+func optionalNonEmpty(s string) (string, bool) {
+	return s, s != ""
+}
+
+func requireInt(req mcp.CallToolRequest, key string) (int, error) {
+	value, ok := req.GetArguments()[key]
+	if !ok || value == nil {
+		return 0, fmt.Errorf("%s is required", key)
+	}
+	switch v := value.(type) {
+	case float64:
+		return int(v), nil
+	case int:
+		return v, nil
+	case string:
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			return 0, fmt.Errorf("%s must be a valid integer", key)
+		}
+		return parsed, nil
+	default:
+		return 0, fmt.Errorf("%s must be a number", key)
+	}
+}
+
+func requireFloat(req mcp.CallToolRequest, key string) (float64, error) {
+	value, ok := req.GetArguments()[key]
+	if !ok || value == nil {
+		return 0, fmt.Errorf("%s is required", key)
+	}
+	switch v := value.(type) {
+	case float64:
+		return v, nil
+	case int:
+		return float64(v), nil
+	case string:
+		parsed, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return 0, fmt.Errorf("%s must be a valid number", key)
+		}
+		return parsed, nil
+	default:
+		return 0, fmt.Errorf("%s must be a number", key)
+	}
+}
+
 func optionalFloat(req mcp.CallToolRequest, key string) (float64, error) {
 	value, ok := req.GetArguments()[key]
 	if !ok || value == nil {
