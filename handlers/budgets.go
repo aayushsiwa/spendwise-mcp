@@ -1,0 +1,41 @@
+package handlers
+
+import (
+	"context"
+
+	"github.com/mark3labs/mcp-go/mcp"
+)
+
+func (h *Handler) ListBudgets(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	month, err := optionalInt(req, "month")
+	if err != nil {
+		return errorResult(ctx, err)
+	}
+	year, err := optionalInt(req, "year")
+	if err != nil {
+		return errorResult(ctx, err)
+	}
+
+	result, err := h.Service.ListBudgets(ctx, month, year)
+	if err != nil {
+		return errorResult(ctx, err)
+	}
+	return successResult(ctx, map[string]any{"budgets": result})
+}
+
+func (h *Handler) GetBudgetProgress(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	month, err := optionalInt(req, "month")
+	if err != nil {
+		return errorResult(ctx, err)
+	}
+	year, err := optionalInt(req, "year")
+	if err != nil {
+		return errorResult(ctx, err)
+	}
+
+	result, err := h.Service.GetBudgetProgress(ctx, month, year)
+	if err != nil {
+		return errorResult(ctx, err)
+	}
+	return successResult(ctx, map[string]any{"progress": result})
+}
