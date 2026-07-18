@@ -1,9 +1,11 @@
 package backend
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -15,6 +17,108 @@ import (
 	"aayushsiwa/spendwise-mcp/session"
 )
 
+type CreateRecordInput struct {
+	Date        string  `json:"date"`
+	Description string  `json:"description"`
+	Category    string  `json:"category"`
+	Amount      float64 `json:"amount"`
+	Type        string  `json:"type"`
+	Note        string  `json:"note,omitempty"`
+}
+
+type CreateRecordOutput struct {
+	Message string `json:"message"`
+	ID      string `json:"ID"`
+}
+
+type UpdateRecordInput struct {
+	Date        *string  `json:"date,omitempty"`
+	Description *string  `json:"description,omitempty"`
+	Category    *string  `json:"category,omitempty"`
+	Amount      *float64 `json:"amount,omitempty"`
+	Type        *string  `json:"type,omitempty"`
+	Note        *string  `json:"note,omitempty"`
+}
+
+type DeleteRecordOutput struct {
+	Message string `json:"message"`
+	Deleted int64  `json:"deleted"`
+}
+
+type CreateBudgetInput struct {
+	CategoryID string  `json:"categoryID"`
+	Month      int     `json:"month"`
+	Year       int     `json:"year"`
+	Amount     float64 `json:"amount"`
+}
+
+type CreateBudgetOutput struct {
+	Message string `json:"message"`
+	ID      string `json:"ID"`
+}
+
+type UpdateBudgetInput struct {
+	Amount float64 `json:"amount"`
+}
+
+type DeleteBudgetOutput struct {
+	Message string `json:"message"`
+}
+
+type CreateGoalInput struct {
+	Name                string   `json:"name"`
+	TargetAmount        float64  `json:"targetAmount"`
+	CurrentAmount       float64  `json:"currentAmount,omitempty"`
+	TargetDate          string   `json:"targetDate,omitempty"`
+	CategoryID          *string  `json:"categoryID,omitempty"`
+	Status              string   `json:"status,omitempty"`
+	Description         string   `json:"description,omitempty"`
+	MonthlyContribution *float64 `json:"monthlyContribution,omitempty"`
+}
+
+type CreateGoalOutput struct {
+	Message string `json:"message"`
+	ID      string `json:"ID"`
+}
+
+type UpdateGoalInput struct {
+	Name                *string  `json:"name,omitempty"`
+	TargetAmount        *float64 `json:"targetAmount,omitempty"`
+	CurrentAmount       *float64 `json:"currentAmount,omitempty"`
+	TargetDate          *string  `json:"targetDate,omitempty"`
+	Category            *string  `json:"category,omitempty"`
+	Status              *string  `json:"status,omitempty"`
+	Description         *string  `json:"description,omitempty"`
+	MonthlyContribution *float64 `json:"monthlyContribution,omitempty"`
+}
+
+type AddGoalProgressInput struct {
+	Amount float64 `json:"amount"`
+}
+
+type CreateCategoryInput struct {
+	Name  string `json:"name"`
+	Icon  string `json:"icon"`
+	Color string `json:"color"`
+}
+
+type CreateCategoryOutput struct {
+	ID    string `json:"ID"`
+	Name  string `json:"name"`
+	Icon  string `json:"icon"`
+	Color string `json:"color"`
+}
+
+type UpdateCategoryInput struct {
+	Name  string `json:"name"`
+	Icon  string `json:"icon"`
+	Color string `json:"color"`
+}
+
+type DeleteCategoryOutput struct {
+	Message string `json:"message"`
+}
+
 type Client interface {
 	SearchRecords(ctx context.Context, params models.SearchRecordsParams) (*models.SearchRecordsResult, error)
 	GetRecord(ctx context.Context, id string) (*models.Record, error)
@@ -24,6 +128,19 @@ type Client interface {
 	GetBudgetProgress(ctx context.Context, month, year int) ([]models.BudgetProgress, error)
 	ListGoals(ctx context.Context) ([]models.Goal, error)
 	GetGoal(ctx context.Context, id string) (*models.Goal, error)
+	CreateRecord(ctx context.Context, input CreateRecordInput) (*CreateRecordOutput, error)
+	UpdateRecord(ctx context.Context, id string, input UpdateRecordInput) error
+	DeleteRecord(ctx context.Context, id string) (*DeleteRecordOutput, error)
+	CreateBudget(ctx context.Context, input CreateBudgetInput) (*CreateBudgetOutput, error)
+	UpdateBudget(ctx context.Context, id string, input UpdateBudgetInput) error
+	DeleteBudget(ctx context.Context, id string) (*DeleteBudgetOutput, error)
+	CreateGoal(ctx context.Context, input CreateGoalInput) (*CreateGoalOutput, error)
+	UpdateGoal(ctx context.Context, id string, input UpdateGoalInput) error
+	DeleteGoal(ctx context.Context, id string) (*DeleteBudgetOutput, error)
+	AddGoalProgress(ctx context.Context, id string, input AddGoalProgressInput) error
+	CreateCategory(ctx context.Context, input CreateCategoryInput) (*CreateCategoryOutput, error)
+	UpdateCategory(ctx context.Context, id string, input UpdateCategoryInput) error
+	DeleteCategory(ctx context.Context, id string) (*DeleteCategoryOutput, error)
 }
 
 type HTTPClient struct {
@@ -144,6 +261,195 @@ func (c *HTTPClient) GetGoal(ctx context.Context, id string) (*models.Goal, erro
 	return &envelope.Goal, nil
 }
 
+func (c *HTTPClient) CreateRecord(ctx context.Context, input CreateRecordInput) (*CreateRecordOutput, error) {
+	var result CreateRecordOutput
+	if err := c.post(ctx, "/records", input, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *HTTPClient) UpdateRecord(ctx context.Context, id string, input UpdateRecordInput) error {
+	return c.patch(ctx, "/records/"+url.PathEscape(id), input)
+}
+
+func (c *HTTPClient) DeleteRecord(ctx context.Context, id string) (*DeleteRecordOutput, error) {
+	var result DeleteRecordOutput
+	if err := c.delete(ctx, "/records/"+url.PathEscape(id), &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *HTTPClient) CreateBudget(ctx context.Context, input CreateBudgetInput) (*CreateBudgetOutput, error) {
+	var result CreateBudgetOutput
+	if err := c.post(ctx, "/budgets", input, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *HTTPClient) UpdateBudget(ctx context.Context, id string, input UpdateBudgetInput) error {
+	return c.patch(ctx, "/budgets/"+url.PathEscape(id), input)
+}
+
+func (c *HTTPClient) DeleteBudget(ctx context.Context, id string) (*DeleteBudgetOutput, error) {
+	var result DeleteBudgetOutput
+	if err := c.delete(ctx, "/budgets/"+url.PathEscape(id), &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *HTTPClient) CreateGoal(ctx context.Context, input CreateGoalInput) (*CreateGoalOutput, error) {
+	var result CreateGoalOutput
+	if err := c.post(ctx, "/goals", input, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *HTTPClient) UpdateGoal(ctx context.Context, id string, input UpdateGoalInput) error {
+	return c.patch(ctx, "/goals/"+url.PathEscape(id), input)
+}
+
+func (c *HTTPClient) DeleteGoal(ctx context.Context, id string) (*DeleteBudgetOutput, error) {
+	var result DeleteBudgetOutput
+	if err := c.delete(ctx, "/goals/"+url.PathEscape(id), &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *HTTPClient) AddGoalProgress(ctx context.Context, id string, input AddGoalProgressInput) error {
+	return c.postNoResult(ctx, "/goals/"+url.PathEscape(id)+"/progress", input)
+}
+
+func (c *HTTPClient) CreateCategory(ctx context.Context, input CreateCategoryInput) (*CreateCategoryOutput, error) {
+	var results []CreateCategoryOutput
+	if err := c.post(ctx, "/categories", []CreateCategoryInput{input}, &results); err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, apperrors.NewBackend("category creation returned empty result", nil)
+	}
+	return &results[0], nil
+}
+
+func (c *HTTPClient) UpdateCategory(ctx context.Context, id string, input UpdateCategoryInput) error {
+	return c.patch(ctx, "/categories/"+url.PathEscape(id), input)
+}
+
+func (c *HTTPClient) DeleteCategory(ctx context.Context, id string) (*DeleteCategoryOutput, error) {
+	if err := c.delete(ctx, "/categories/"+url.PathEscape(id), nil); err != nil {
+		return nil, err
+	}
+	return &DeleteCategoryOutput{Message: "category deleted"}, nil
+}
+
+func (c *HTTPClient) postNoResult(ctx context.Context, path string, body any) error {
+	fullURL := c.baseURL + path
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(body); err != nil {
+		return apperrors.NewInternal("failed to encode request body", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, &buf)
+	if err != nil {
+		return apperrors.NewInternal("failed to create backend request", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	if sessionCtx := session.FromContext(ctx); sessionCtx != nil {
+		req.Header.Set("X-Request-ID", sessionCtx.RequestID)
+		req.Header.Set("X-MCP-Client", sessionCtx.ClientName)
+		req.Header.Set("X-MCP-Actor", sessionCtx.ActorID)
+		if sessionCtx.BackendToken != "" {
+			req.Header.Set("Authorization", "Bearer "+sessionCtx.BackendToken)
+		}
+	} else if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return apperrors.NewBackend("backend request failed", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		var apiErr struct {
+			Error struct {
+				Type    string         `json:"type"`
+				Message string         `json:"message"`
+				Details map[string]any `json:"details"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(bodyBytes, &apiErr); err == nil && apiErr.Error.Message != "" {
+			return mapStatusError(resp.StatusCode, apiErr.Error.Type, apiErr.Error.Message, apiErr.Error.Details)
+		}
+		return mapStatusError(resp.StatusCode, "backend_error", fmt.Sprintf("backend request failed with status %d", resp.StatusCode), nil)
+	}
+
+	return nil
+}
+
+func (c *HTTPClient) post(ctx context.Context, path string, body any, out any) error {
+	fullURL := c.baseURL + path
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(body); err != nil {
+		return apperrors.NewInternal("failed to encode request body", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, &buf)
+	if err != nil {
+		return apperrors.NewInternal("failed to create backend request", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	if sessionCtx := session.FromContext(ctx); sessionCtx != nil {
+		req.Header.Set("X-Request-ID", sessionCtx.RequestID)
+		req.Header.Set("X-MCP-Client", sessionCtx.ClientName)
+		req.Header.Set("X-MCP-Actor", sessionCtx.ActorID)
+		if sessionCtx.BackendToken != "" {
+			req.Header.Set("Authorization", "Bearer "+sessionCtx.BackendToken)
+		}
+	} else if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return apperrors.NewBackend("backend request failed", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var apiErr struct {
+			Error struct {
+				Type    string         `json:"type"`
+				Message string         `json:"message"`
+				Details map[string]any `json:"details"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(bodyBytes, &apiErr); err == nil && apiErr.Error.Message != "" {
+			return mapStatusError(resp.StatusCode, apiErr.Error.Type, apiErr.Error.Message, apiErr.Error.Details)
+		}
+		return mapStatusError(resp.StatusCode, "backend_error", fmt.Sprintf("backend request failed with status %d", resp.StatusCode), nil)
+	}
+
+	if err := json.Unmarshal(bodyBytes, out); err != nil {
+		return apperrors.NewBackend("failed to decode backend response", err)
+	}
+
+	return nil
+}
+
 func (c *HTTPClient) get(ctx context.Context, path string, query url.Values, out any) error {
 	fullURL := c.baseURL + path
 	if len(query) > 0 {
@@ -188,6 +494,105 @@ func (c *HTTPClient) get(ctx context.Context, path string, query url.Values, out
 
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return apperrors.NewBackend("failed to decode backend response", err)
+	}
+
+	return nil
+}
+
+func (c *HTTPClient) patch(ctx context.Context, path string, body any) error {
+	fullURL := c.baseURL + path
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(body); err != nil {
+		return apperrors.NewInternal("failed to encode request body", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, fullURL, &buf)
+	if err != nil {
+		return apperrors.NewInternal("failed to create backend request", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	if sessionCtx := session.FromContext(ctx); sessionCtx != nil {
+		req.Header.Set("X-Request-ID", sessionCtx.RequestID)
+		req.Header.Set("X-MCP-Client", sessionCtx.ClientName)
+		req.Header.Set("X-MCP-Actor", sessionCtx.ActorID)
+		if sessionCtx.BackendToken != "" {
+			req.Header.Set("Authorization", "Bearer "+sessionCtx.BackendToken)
+		}
+	} else if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return apperrors.NewBackend("backend request failed", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		var apiErr struct {
+			Error struct {
+				Type    string         `json:"type"`
+				Message string         `json:"message"`
+				Details map[string]any `json:"details"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(bodyBytes, &apiErr); err == nil && apiErr.Error.Message != "" {
+			return mapStatusError(resp.StatusCode, apiErr.Error.Type, apiErr.Error.Message, apiErr.Error.Details)
+		}
+		return mapStatusError(resp.StatusCode, "backend_error", fmt.Sprintf("backend request failed with status %d", resp.StatusCode), nil)
+	}
+
+	return nil
+}
+
+func (c *HTTPClient) delete(ctx context.Context, path string, out any) error {
+	fullURL := c.baseURL + path
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, fullURL, nil)
+	if err != nil {
+		return apperrors.NewInternal("failed to create backend request", err)
+	}
+
+	if sessionCtx := session.FromContext(ctx); sessionCtx != nil {
+		req.Header.Set("X-Request-ID", sessionCtx.RequestID)
+		req.Header.Set("X-MCP-Client", sessionCtx.ClientName)
+		req.Header.Set("X-MCP-Actor", sessionCtx.ActorID)
+		if sessionCtx.BackendToken != "" {
+			req.Header.Set("Authorization", "Bearer "+sessionCtx.BackendToken)
+		}
+	} else if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return apperrors.NewBackend("backend request failed", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var apiErr struct {
+			Error struct {
+				Type    string         `json:"type"`
+				Message string         `json:"message"`
+				Details map[string]any `json:"details"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(bodyBytes, &apiErr); err == nil && apiErr.Error.Message != "" {
+			return mapStatusError(resp.StatusCode, apiErr.Error.Type, apiErr.Error.Message, apiErr.Error.Details)
+		}
+		return mapStatusError(resp.StatusCode, "backend_error", fmt.Sprintf("backend request failed with status %d", resp.StatusCode), nil)
+	}
+
+	if out != nil {
+		if err := json.Unmarshal(bodyBytes, out); err != nil {
+			return apperrors.NewBackend("failed to decode backend response", err)
+		}
 	}
 
 	return nil

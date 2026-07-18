@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"math"
 	"strings"
 	"time"
 
@@ -9,6 +10,79 @@ import (
 	apperrors "aayushsiwa/spendwise-mcp/errors"
 	"aayushsiwa/spendwise-mcp/models"
 )
+
+type CreateRecordParams struct {
+	Date           string
+	Description    string
+	Category       string
+	Amount         float64
+	RecordType     string
+	Note           string
+	IdempotencyKey string
+}
+
+type UpdateRecordParams struct {
+	RecordID    string
+	Date        *string
+	Description *string
+	Category    *string
+	Amount      *float64
+	RecordType  *string
+	Note        *string
+}
+
+type CreateBudgetParams struct {
+	CategoryID string
+	Month      int
+	Year       int
+	Amount     float64
+}
+
+type UpdateBudgetParams struct {
+	BudgetID string
+	Amount   float64
+}
+
+type CreateGoalParams struct {
+	Name                string
+	TargetAmount        float64
+	CurrentAmount       float64
+	TargetDate          string
+	CategoryID          *string
+	Status              string
+	Description         string
+	MonthlyContribution float64
+}
+
+type UpdateGoalParams struct {
+	GoalID              string
+	Name                *string
+	TargetAmount        *float64
+	CurrentAmount       *float64
+	TargetDate          *string
+	Category            *string
+	Status              *string
+	Description         *string
+	MonthlyContribution *float64
+}
+
+type AddGoalProgressParams struct {
+	GoalID string
+	Amount float64
+}
+
+type CreateCategoryParams struct {
+	Name  string
+	Icon  string
+	Color string
+}
+
+type UpdateCategoryParams struct {
+	CategoryID string
+	Name       string
+	Icon       string
+	Color      string
+}
 
 type Service interface {
 	SearchRecords(ctx context.Context, params models.SearchRecordsParams) (*models.SearchRecordsResult, error)
@@ -19,6 +93,19 @@ type Service interface {
 	GetBudgetProgress(ctx context.Context, month, year int) ([]models.BudgetProgress, error)
 	ListGoals(ctx context.Context) ([]models.Goal, error)
 	GetGoal(ctx context.Context, id string) (*models.Goal, error)
+	CreateRecord(ctx context.Context, params CreateRecordParams) (*backend.CreateRecordOutput, error)
+	UpdateRecord(ctx context.Context, params UpdateRecordParams) error
+	DeleteRecord(ctx context.Context, id string) (*backend.DeleteRecordOutput, error)
+	CreateBudget(ctx context.Context, params CreateBudgetParams) (*backend.CreateBudgetOutput, error)
+	UpdateBudget(ctx context.Context, params UpdateBudgetParams) error
+	DeleteBudget(ctx context.Context, id string) (*backend.DeleteBudgetOutput, error)
+	CreateGoal(ctx context.Context, params CreateGoalParams) (*backend.CreateGoalOutput, error)
+	UpdateGoal(ctx context.Context, params UpdateGoalParams) error
+	DeleteGoal(ctx context.Context, id string) (*backend.DeleteBudgetOutput, error)
+	AddGoalProgress(ctx context.Context, params AddGoalProgressParams) error
+	CreateCategory(ctx context.Context, params CreateCategoryParams) (*backend.CreateCategoryOutput, error)
+	UpdateCategory(ctx context.Context, params UpdateCategoryParams) error
+	DeleteCategory(ctx context.Context, id string) (*backend.DeleteCategoryOutput, error)
 }
 
 type MCPService struct {
@@ -98,6 +185,261 @@ func (s *MCPService) GetGoal(ctx context.Context, id string) (*models.Goal, erro
 		return nil, apperrors.NewValidation("Validation failed", map[string]any{"goal_id": map[string]any{"message": "goal_id is required", "value": id}})
 	}
 	return s.client.GetGoal(ctx, id)
+}
+
+func (s *MCPService) CreateRecord(ctx context.Context, params CreateRecordParams) (*backend.CreateRecordOutput, error) {
+	if strings.TrimSpace(params.Date) == "" {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"date": map[string]any{"message": "date is required"}})
+	}
+	if strings.TrimSpace(params.Category) == "" {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"category": map[string]any{"message": "category is required"}})
+	}
+	if params.Amount <= 0 {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"amount": map[string]any{"message": "amount must be greater than 0", "value": params.Amount}})
+	}
+	if err := validateRecordType(params.RecordType, true); err != nil {
+		return nil, err
+	}
+	if _, err := time.Parse("2006-01-02", params.Date); err != nil {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"date": map[string]any{"message": "date must be in YYYY-MM-DD format", "value": params.Date}})
+	}
+	if params.Description != "" && len(params.Description) > 255 {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"description": map[string]any{"message": "description must be 255 characters or less"}})
+	}
+	return s.client.CreateRecord(ctx, backend.CreateRecordInput{
+		Date:        params.Date,
+		Description: params.Description,
+		Category:    params.Category,
+		Amount:      params.Amount,
+		Type:        params.RecordType,
+		Note:        params.Note,
+	})
+}
+
+func (s *MCPService) UpdateRecord(ctx context.Context, params UpdateRecordParams) error {
+	if strings.TrimSpace(params.RecordID) == "" {
+		return apperrors.NewValidation("Validation failed", map[string]any{"record_id": map[string]any{"message": "record_id is required"}})
+	}
+
+	input := backend.UpdateRecordInput{}
+
+	if params.Date != nil {
+		if strings.TrimSpace(*params.Date) == "" {
+			return apperrors.NewValidation("Validation failed", map[string]any{"date": map[string]any{"message": "date must not be empty"}})
+		}
+		if _, err := time.Parse("2006-01-02", *params.Date); err != nil {
+			return apperrors.NewValidation("Validation failed", map[string]any{"date": map[string]any{"message": "date must be in YYYY-MM-DD format", "value": *params.Date}})
+		}
+		input.Date = params.Date
+	}
+	if params.Description != nil {
+		if len(*params.Description) > 255 {
+			return apperrors.NewValidation("Validation failed", map[string]any{"description": map[string]any{"message": "description must be 255 characters or less"}})
+		}
+		input.Description = params.Description
+	}
+	if params.Category != nil {
+		if strings.TrimSpace(*params.Category) == "" {
+			return apperrors.NewValidation("Validation failed", map[string]any{"category": map[string]any{"message": "category must not be empty"}})
+		}
+		input.Category = params.Category
+	}
+	if params.Amount != nil {
+		if *params.Amount <= 0 {
+			return apperrors.NewValidation("Validation failed", map[string]any{"amount": map[string]any{"message": "amount must be greater than 0", "value": *params.Amount}})
+		}
+		input.Amount = params.Amount
+	}
+	if params.RecordType != nil {
+		if err := validateRecordType(*params.RecordType, true); err != nil {
+			return err
+		}
+		input.Type = params.RecordType
+	}
+	if params.Note != nil {
+		input.Note = params.Note
+	}
+
+	return s.client.UpdateRecord(ctx, params.RecordID, input)
+}
+
+func (s *MCPService) DeleteRecord(ctx context.Context, id string) (*backend.DeleteRecordOutput, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"record_id": map[string]any{"message": "record_id is required", "value": id}})
+	}
+	return s.client.DeleteRecord(ctx, id)
+}
+
+func (s *MCPService) CreateBudget(ctx context.Context, params CreateBudgetParams) (*backend.CreateBudgetOutput, error) {
+	if err := validateMonthYear(params.Month, params.Year); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(params.CategoryID) == "" {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"categoryID": map[string]any{"message": "categoryID is required"}})
+	}
+	if params.Amount <= 0 || math.IsInf(params.Amount, 0) || math.IsNaN(params.Amount) {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"amount": map[string]any{"message": "amount must be a positive number", "value": params.Amount}})
+	}
+	return s.client.CreateBudget(ctx, backend.CreateBudgetInput{
+		CategoryID: params.CategoryID,
+		Month:      params.Month,
+		Year:       params.Year,
+		Amount:     params.Amount,
+	})
+}
+
+func (s *MCPService) UpdateBudget(ctx context.Context, params UpdateBudgetParams) error {
+	if strings.TrimSpace(params.BudgetID) == "" {
+		return apperrors.NewValidation("Validation failed", map[string]any{"budget_id": map[string]any{"message": "budget_id is required"}})
+	}
+	if params.Amount <= 0 || math.IsInf(params.Amount, 0) || math.IsNaN(params.Amount) {
+		return apperrors.NewValidation("Validation failed", map[string]any{"amount": map[string]any{"message": "amount must be a positive number", "value": params.Amount}})
+	}
+	return s.client.UpdateBudget(ctx, params.BudgetID, backend.UpdateBudgetInput{Amount: params.Amount})
+}
+
+func (s *MCPService) DeleteBudget(ctx context.Context, id string) (*backend.DeleteBudgetOutput, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"budget_id": map[string]any{"message": "budget_id is required", "value": id}})
+	}
+	return s.client.DeleteBudget(ctx, id)
+}
+
+func (s *MCPService) CreateGoal(ctx context.Context, params CreateGoalParams) (*backend.CreateGoalOutput, error) {
+	if strings.TrimSpace(params.Name) == "" {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"name": map[string]any{"message": "name is required"}})
+	}
+	if params.TargetAmount <= 0 || math.IsInf(params.TargetAmount, 0) || math.IsNaN(params.TargetAmount) {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"targetAmount": map[string]any{"message": "targetAmount must be a positive number", "value": params.TargetAmount}})
+	}
+	if params.CurrentAmount < 0 {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"currentAmount": map[string]any{"message": "currentAmount must not be negative", "value": params.CurrentAmount}})
+	}
+	if params.TargetDate != "" {
+		if _, err := time.Parse("2006-01-02", params.TargetDate); err != nil {
+			return nil, apperrors.NewValidation("Validation failed", map[string]any{"targetDate": map[string]any{"message": "targetDate must be in YYYY-MM-DD format", "value": params.TargetDate}})
+		}
+	}
+	if params.Status != "" && params.Status != "active" && params.Status != "achieved" && params.Status != "abandoned" {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"status": map[string]any{"message": "status must be active, achieved, or abandoned", "value": params.Status}})
+	}
+	if params.Description != "" && len(params.Description) > 1000 {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"description": map[string]any{"message": "description must be 1000 characters or less"}})
+	}
+	return s.client.CreateGoal(ctx, backend.CreateGoalInput{
+		Name:                params.Name,
+		TargetAmount:        params.TargetAmount,
+		CurrentAmount:       params.CurrentAmount,
+		TargetDate:          params.TargetDate,
+		CategoryID:          params.CategoryID,
+		Status:              params.Status,
+		Description:         params.Description,
+		MonthlyContribution: &params.MonthlyContribution,
+	})
+}
+
+func (s *MCPService) UpdateGoal(ctx context.Context, params UpdateGoalParams) error {
+	if strings.TrimSpace(params.GoalID) == "" {
+		return apperrors.NewValidation("Validation failed", map[string]any{"goal_id": map[string]any{"message": "goal_id is required"}})
+	}
+
+	input := backend.UpdateGoalInput{}
+
+	if params.Name != nil {
+		if strings.TrimSpace(*params.Name) == "" {
+			return apperrors.NewValidation("Validation failed", map[string]any{"name": map[string]any{"message": "name must not be empty"}})
+		}
+		input.Name = params.Name
+	}
+	if params.TargetAmount != nil {
+		if *params.TargetAmount <= 0 || math.IsInf(*params.TargetAmount, 0) || math.IsNaN(*params.TargetAmount) {
+			return apperrors.NewValidation("Validation failed", map[string]any{"targetAmount": map[string]any{"message": "targetAmount must be a positive number", "value": *params.TargetAmount}})
+		}
+		input.TargetAmount = params.TargetAmount
+	}
+	if params.CurrentAmount != nil {
+		if *params.CurrentAmount < 0 {
+			return apperrors.NewValidation("Validation failed", map[string]any{"currentAmount": map[string]any{"message": "currentAmount must not be negative", "value": *params.CurrentAmount}})
+		}
+		input.CurrentAmount = params.CurrentAmount
+	}
+	if params.TargetDate != nil {
+		if *params.TargetDate != "" {
+			if _, err := time.Parse("2006-01-02", *params.TargetDate); err != nil {
+				return apperrors.NewValidation("Validation failed", map[string]any{"targetDate": map[string]any{"message": "targetDate must be in YYYY-MM-DD format", "value": *params.TargetDate}})
+			}
+		}
+		input.TargetDate = params.TargetDate
+	}
+	if params.Category != nil {
+		input.Category = params.Category
+	}
+	if params.Status != nil {
+		if *params.Status != "active" && *params.Status != "achieved" && *params.Status != "abandoned" {
+			return apperrors.NewValidation("Validation failed", map[string]any{"status": map[string]any{"message": "status must be active, achieved, or abandoned", "value": *params.Status}})
+		}
+		input.Status = params.Status
+	}
+	if params.Description != nil {
+		input.Description = params.Description
+	}
+	if params.MonthlyContribution != nil {
+		if *params.MonthlyContribution < 0 {
+			return apperrors.NewValidation("Validation failed", map[string]any{"monthlyContribution": map[string]any{"message": "monthlyContribution must not be negative", "value": *params.MonthlyContribution}})
+		}
+		input.MonthlyContribution = params.MonthlyContribution
+	}
+
+	return s.client.UpdateGoal(ctx, params.GoalID, input)
+}
+
+func (s *MCPService) DeleteGoal(ctx context.Context, id string) (*backend.DeleteBudgetOutput, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"goal_id": map[string]any{"message": "goal_id is required", "value": id}})
+	}
+	return s.client.DeleteGoal(ctx, id)
+}
+
+func (s *MCPService) CreateCategory(ctx context.Context, params CreateCategoryParams) (*backend.CreateCategoryOutput, error) {
+	if strings.TrimSpace(params.Name) == "" {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"name": map[string]any{"message": "name is required"}})
+	}
+	return s.client.CreateCategory(ctx, backend.CreateCategoryInput{
+		Name:  params.Name,
+		Icon:  params.Icon,
+		Color: params.Color,
+	})
+}
+
+func (s *MCPService) UpdateCategory(ctx context.Context, params UpdateCategoryParams) error {
+	if strings.TrimSpace(params.CategoryID) == "" {
+		return apperrors.NewValidation("Validation failed", map[string]any{"category_id": map[string]any{"message": "category_id is required"}})
+	}
+	if strings.TrimSpace(params.Name) == "" {
+		return apperrors.NewValidation("Validation failed", map[string]any{"name": map[string]any{"message": "name is required"}})
+	}
+	return s.client.UpdateCategory(ctx, params.CategoryID, backend.UpdateCategoryInput{
+		Name:  params.Name,
+		Icon:  params.Icon,
+		Color: params.Color,
+	})
+}
+
+func (s *MCPService) DeleteCategory(ctx context.Context, id string) (*backend.DeleteCategoryOutput, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, apperrors.NewValidation("Validation failed", map[string]any{"category_id": map[string]any{"message": "category_id is required", "value": id}})
+	}
+	return s.client.DeleteCategory(ctx, id)
+}
+
+func (s *MCPService) AddGoalProgress(ctx context.Context, params AddGoalProgressParams) error {
+	if strings.TrimSpace(params.GoalID) == "" {
+		return apperrors.NewValidation("Validation failed", map[string]any{"goal_id": map[string]any{"message": "goal_id is required"}})
+	}
+	if params.Amount <= 0 || math.IsInf(params.Amount, 0) || math.IsNaN(params.Amount) {
+		return apperrors.NewValidation("Validation failed", map[string]any{"amount": map[string]any{"message": "amount must be a positive number", "value": params.Amount}})
+	}
+	return s.client.AddGoalProgress(ctx, params.GoalID, backend.AddGoalProgressInput{Amount: params.Amount})
 }
 
 func validateDateRange(fromDate, toDate string) error {
