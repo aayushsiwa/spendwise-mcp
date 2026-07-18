@@ -1,0 +1,38 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [linux, darwin]
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          binary="spendwise-mcp-${{ matrix.os }}-${{ matrix.arch }}"
+          go build -ldflags="-s -w" -o "$binary" .
+          echo "binary=$binary" >> $GITHUB_ENV
+
+      - name: Upload
+        uses: softprops/action-gh-release@v2
+        with:
+          files: spendwise-mcp-${{ matrix.os }}-${{ matrix.arch }}
+          generate_release_notes: true

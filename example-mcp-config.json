@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "spendwise": {
+      "command": "go",
+      "args": ["run", "."],
+      "env": {
+        "SPENDWISE_BACKEND_BASE_URL": "http://localhost:8090/api/v1",
+        "SPENDWISE_BACKEND_TOKEN": ""
+      }
+    }
+  }
+}
