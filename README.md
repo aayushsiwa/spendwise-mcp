@@ -5,6 +5,7 @@ MCP server that exposes [SpendWise](https://github.com/aayushsiwa/spendwise-be) 
 ## Prerequisites
 
 - [SpendWise backend](https://github.com/aayushsiwa/spendwise-be) running and accessible
+- Go 1.26.0 or later (required to build from source)
 
 ## Setup
 
@@ -39,7 +40,7 @@ Add to `~/.config/opencode/opencode.json`, `~/.cursor/mcp.json`, or `claude_desk
 }
 ```
 
-If the backend requires a token:
+If the backend requires a token, replace the `env` block with:
 
 ```jsonc
 "env": {
@@ -79,7 +80,7 @@ If the backend requires a token:
 - `add_goal_progress` — contribute toward a goal
 
 ### Summary
-- `get_financial_summary` — income, expense, net, breakdown for a date range
+- `get_financial_summary` — income, expense, net, balances, and category breakdown for a date range
 
 ## Environment
 
