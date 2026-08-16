@@ -109,6 +109,24 @@ All inputs must be validated server-side before service execution. The MCP serve
 
 ## 3. High-Level Architecture
 
+### Current Deployment (HTTP API Integration)
+
+```mermaid
+flowchart TD
+    A[AI Client\nClaude Desktop / ChatGPT / Cursor / VS Code] --> B[MCP Server\nTransport + Auth + Tool Schemas + Policy]
+    B --> C[HTTP Client]
+    C --> D[SpendWise HTTP API\nAuthentication + Service Wrapper]
+    D --> E[Application Service Layer\nBusiness capabilities and validation]
+    E --> F[Database\nSQLite / Postgres / MySQL]
+    E --> G[External APIs\nFuture integrations]
+```
+
+The current MCP server integrates with SpendWise by calling its HTTP REST API. The MCP server acts as an HTTP client, translating tool calls into backend HTTP requests. Authentication and user/workspace ownership context must be enforced at the HTTP API boundary.
+
+### Alternative Deployment (Direct Application-Service Integration)
+
+In an alternative deployment, the MCP server may link directly to the application service layer within the same process, bypassing the HTTP boundary:
+
 ```mermaid
 flowchart TD
     A[AI Client\nClaude Desktop / ChatGPT / Cursor / VS Code] --> B[MCP Server\nTransport + Auth + Tool Schemas + Policy]
@@ -116,6 +134,8 @@ flowchart TD
     C --> D[Database\nSQLite / Postgres / MySQL]
     C --> E[External APIs\nFuture integrations]
 ```
+
+If deployed this way, the MCP server must enforce authentication and user/workspace ownership context directly, as there is no intermediate HTTP API layer to perform these checks.
 
 ### Layer Responsibilities
 
@@ -136,6 +156,13 @@ flowchart TD
 - enforces safety rules such as confirmation and idempotency
 - shapes outputs for AI consumption
 - logs, meters, and audits every invocation
+
+#### HTTP API Boundary (current deployment only)
+
+- authenticates end-user credentials
+- enforces user/workspace ownership isolation
+- wraps application service layer with HTTP transport
+- provides authentication context to service layer
 
 #### Application Service Layer
 
@@ -306,9 +333,11 @@ Return structured errors with consistent types, messages, and optional details. 
 
 Mutating tools should support one of:
 
-- caller-provided `idempotency_key`
+- caller-provided `idempotency_key` scoped to the authenticated actor/tenant AND tool
 - deterministic deduplication fingerprint for known-safe operations
 - explicit duplicate detection rules
+
+The implementation must persist the normalized request and result for the retention period (recommended: at least 24 hours). Reusing an idempotency key with a different normalized request must return a conflict error.
 
 ### Pagination
 
@@ -597,7 +626,7 @@ The proposed tools below are intentionally capability-oriented and conservative.
 - Confirmation required: Optional client-side confirmation; required if the client session is in safe mode
 - Read-only or mutating: Mutating
 
-### 7.10 `update_record`
+### 7.10 `update_spending_record`
 
 - Description: Apply a partial update to an existing record.
 - When it should be used: Correcting a category, amount, date, note, or description.
@@ -622,7 +651,7 @@ The proposed tools below are intentionally capability-oriented and conservative.
 - Confirmation required: No for non-destructive corrections
 - Read-only or mutating: Mutating
 
-### 7.11 `delete_record`
+### 7.11 `delete_spending_record`
 
 - Description: Delete a record by ID.
 - When it should be used: Only when the user explicitly requests record removal.
@@ -672,7 +701,7 @@ The proposed tools below are intentionally capability-oriented and conservative.
 - Confirmation required: No
 - Read-only or mutating: Mutating
 
-### 7.13 `update_budget_amount`
+### 7.13 `update_budget`
 
 - Description: Change a budget amount.
 - When it should be used: When the user wants to revise a monthly budget.
@@ -892,10 +921,12 @@ The proposed tools below are intentionally capability-oriented and conservative.
 - When it should be used: Controlled bulk migration or user-approved import tasks.
 - Parameters:
   - `format` required enum: `csv`, `json`
-  - `payload_reference` required
+  - `payload_reference` required — an opaque, server-issued artifact ID bound to the owning user/tenant, subject to size limits, expiration, and one-time use; must NOT be a URL, filesystem path, or inline payload
   - `dry_run` recommended
   - `idempotency_key` required
 - Validation:
+  - `payload_reference` must be a valid server-issued artifact ID for the authenticated user/tenant
+  - reject URLs, filesystem paths, and inline payloads
   - file size bounds
   - format allowed
   - required columns for CSV
@@ -978,7 +1009,7 @@ The assistant must obtain IDs from prior read operations. The server should reje
 
 ### Explicit Confirmation
 
-Require confirmation tokens for destructive or bulk actions. The confirmation text shown to the user should summarize impact.
+Require confirmation tokens for destructive or bulk actions. Confirmation tokens must be server-issued, short-lived, single-use values bound to the authenticated actor, the exact destructive tool, target ID, and normalized effect. The implementation must validate the token and reject replay attempts. The confirmation text shown to the user should summarize impact.
 
 ### Soft Delete
 
@@ -991,7 +1022,7 @@ Tradeoff:
 
 ### Optimistic Locking
 
-Add `version`, `etag`, or `updated_at` preconditions for updates and deletes to prevent overwriting newer user changes.
+Require optimistic locking for `update_spending_record` and `delete_spending_record` (and equivalent update/delete operations on other resources). Callers must supply `version`, `etag`, or `updated_at` preconditions. Mismatches must return a conflict error. Document an equivalent atomic check-and-update mechanism only where the service layer already supports it.
 
 ### Transactions
 
@@ -1151,16 +1182,24 @@ Every MCP invocation should log:
 - session ID
 - client name
 - tool name
-- normalized parameters with secrets redacted
+- normalized parameters (allowlist of non-sensitive metadata only; do NOT log financial payloads by default)
 - result status
 - duration
 - error type and details summary
 
+Sensitive fields must be redacted or hashed before logging:
+
+- record descriptions, notes, and search terms
+- amounts
+- export payloads
+- category names if potentially sensitive
+- any user-supplied free-text
+
 Mutating operations should also audit:
 
 - target entity type and ID
-- before state or hash
-- after state or hash
+- before state or hash (redact sensitive fields)
+- after state or hash (redact sensitive fields)
 - idempotency key
 - confirmation artifact
 - reason if supplied
@@ -1169,9 +1208,9 @@ Mutating operations should also audit:
 Audit requirements:
 
 - immutable storage
-- retention policy appropriate for financial data
+- retention policy appropriate for financial data, with defined access controls
 - searchable by user, entity, tool, and date
-- redaction of sensitive free text if required by compliance policy
+- field-level redaction for sensitive financial data
 
 ## 12. Observability
 
@@ -1238,6 +1277,14 @@ Safe cache candidates:
 - categories
 - current-month budget progress for read-heavy sessions
 - summaries for fixed date windows
+
+Every cache key must include:
+
+- authenticated actor/tenant ID
+- applicable filters (date range, category, record type, etc.)
+- permission scope
+
+Cached budget progress and summaries must be invalidated after relevant writes (record creation, updates, or deletions affecting the cached scope) to prevent cross-user financial data exposure or stale data.
 
 Avoid caching writes or mutable record detail without invalidation.
 
@@ -1380,6 +1427,7 @@ Infrastructure:
 
 - choose MCP runtime and transport model
 - implement authentication and session context resolution
+- **tenant isolation and ownership enforcement (REQUIRED before releasing any write, import, or export tools — cross-user reads/writes must be impossible; shared-user deployments must remain unavailable until this gate passes)**
 - build tool registration framework
 - add authorization layer and structured error mapping
 - add logging, metrics, tracing, and request IDs
@@ -1406,9 +1454,10 @@ This phase should ship first because it delivers value with lower risk.
 Write tools:
 
 - `create_spending_record`
-- `update_record`
+- `update_spending_record`
+- `delete_spending_record`
 - `create_budget`
-- `update_budget_amount`
+- `update_budget`
 - `create_goal`
 - `update_goal`
 - `add_goal_progress`
@@ -1435,7 +1484,6 @@ Advanced workflows:
 
 Production hardening:
 
-- tenant isolation enforcement
 - rate limiting
 - security review
 - threat modeling

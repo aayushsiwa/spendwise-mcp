@@ -9,7 +9,7 @@ Related repositories:
 
 ## Features
 
-- **AI-native access to your finance data** — let an assistant search records, read summaries, and manage categories, budgets, and goals through your own backend, with no third-party data sharing.
+- **AI-native access to your finance data** — let an assistant search records, read summaries, and manage categories, budgets, and goals through your own backend. The MCP server does not persist financial data or create a separate SpendWise data store. Tool results and financial records are sent to the configured AI client or model and governed by that provider's policies.
 - **Full CRUD coverage** — records, categories, budgets, and savings goals can all be queried and mutated via tools.
 - **Read-only and write tools** — beyond reading, the server can create/update/delete records, categories, budgets, and goals, and add progress to goals.
 - **Rich querying** — `search_records` supports date ranges, category/type filters, amount bounds, free-text search, grouping (by category or month), and pagination.
@@ -92,6 +92,8 @@ Download the latest release for your platform from the [releases page](https://g
 ```sh
 cp .env.example .env   # fill in SPENDWISE_BACKEND_BASE_URL (and token for production)
 go build -o spendwise-mcp .
+# Load environment variables from .env before running:
+export $(grep -v '^#' .env | xargs)
 ./spendwise-mcp
 ```
 
@@ -134,4 +136,5 @@ If the backend requires a token:
 
 ## Notes
 
+- **This is a local, single-user setup.** The current configuration using `SPENDWISE_BACKEND_TOKEN` and `SPENDWISE_ACTOR_ID` is unsuitable for shared or multi-user deployment. The backend service token does not authenticate or identify individual end users.
 - **Auth is end-to-end.** The `SPENDWISE_BACKEND_TOKEN` is forwarded as a bearer token; it is only enforced if the backend actually validates it.
